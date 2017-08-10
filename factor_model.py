@@ -10,9 +10,8 @@ class FactorModel(BatchModel):
         self.n_genes = n_genes
         self.k = k
 
-        self.shape = (n_cells, n_genes)
-
-        super().__init__()
+        shape = (n_cells, n_genes)
+        super().__init__(shape)
 
     def _generative_model(self):
 
@@ -25,29 +24,22 @@ class FactorModel(BatchModel):
         X = tf.matmul(C, G)
 
         # from this point on, everything is element-wise
-        #X_flat = tf.reshape(X, (-1,))
-        # batch/CV sample 
-        #X_sample = tf.gather(X_flat, self.batch_inds)
-        X_sample = tf.gather_nd(X, self.batch_inds)
+        X_sample = tf.boolean_mask(X, self.batch_mask)
+        n_samples = tf.shape(X_sample)[0]
         
-        # cell- or gene-specific factors
-        #S = tf.nn.softplus(tf.Variable(tf.random_uniform((n_cells,))))
-        #self.params['S'] = S
-        #S = tf.reshape(S, (-1, 1))
-
         # simple non-linearity
         M_sample = tf.exp(X_sample)+1 
 
         # per-element categorical variables with probs [p, 1-p]
         p = tf.sigmoid(tf.Variable(tf.random_uniform((1,))[0]))
         self.params['p'] = p
-        probs = tf.tile([1-p, p], (self.batch_size,))
+        probs = tf.tile([1-p, p], (n_samples,))
         probs = tf.reshape(probs, (-1, 2))
         cat = Categorical(probs=probs)
 
         # counts are mixture model between Poisson(M) (signal) and 0 (dropout)
         signal = Poisson(M_sample) 
-        dropout = Deterministic(0.0*tf.ones((self.batch_size,)))
+        dropout = Deterministic(0.0*tf.ones((n_samples,)))
         counts = Mixture(cat, [signal, dropout])
         
         return counts 
