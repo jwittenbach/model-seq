@@ -10,24 +10,31 @@ def get_batch(n_elems, n_batch, cv_inds):
     return np.setdiff1d(inds, cv_inds, assume_unique=True)
 
 def reshape_inds(inds, shape):
-    return list(zip(*np.unravel_index(inds, shape)))
+    inds_np = np.unravel_index(inds, shape)
+    inds_tf = list(zip(*inds_np))
+    return inds_np, inds_tf
 
 def cv_batch_fit(model, data, cv_frac, batch_frac, seed=0):
     # get sizes
     n_elems = np.prod(model.shape)
     n_cv = np.floor(cv_frac * n_elems).astype(int)
     n_batch = np.floor(batch_frac * n_elems).astype(int)
+    n_batches = np.round((n_elems - n_cv) / n_batch).astype(int)
 
-    # get test set to hold out for CV
-    cv_inds = np.random.randint(n_elems, size=n_cv, dtype=np.int64)
-    cv_targets = data.flatten()[cv_inds]
-    cv_inds_2d = reshape_inds(cv_inds, model.shape)
-
-    # get batches
+    # generate test data and batches
     print("generating batches...")
-    train_inds = np.setdiff1d(np.arange(n_elems), cv_inds)
-    n_batches = np.round((n_elems - n_cv)/n_batch).astype(int)
-    batches = np.array_split(np.random.permutation(train_inds), n_batches)
+    inds = np.random.permutation(np.arange(n_elems))
+    cv_inds = inds[:n_cv]
+    cv_inds_np, cv_inds = reshape_inds(cv_inds, model.shape)
+    cv_targets = data[cv_inds_np]
+
+    train_inds = inds[n_cv:]
+    batches = np.array_split(train_inds, n_batches)
+    batch_inds, batch_targets = [], []
+    for b in batches:
+        inds_np, inds_tf = reshape_inds(b, model.shape)
+        batch_inds.append(inds_tf)
+        batch_targets.append(data[inds_np])
 
     # logging / checkpointing
     train_summary = tf.summary.scalar("training_loss", model.loss)
@@ -48,21 +55,12 @@ def cv_batch_fit(model, data, cv_frac, batch_frac, seed=0):
         i = -1
         while True:
             i += 1
+            batch = i % n_batches
             print(i)
             # update model
-            print("generating batch...")
-            #batch_inds = get_batch(n_elems, n_batch, cv_inds)
-            batch_inds = batches[i % n_batches]
-            print("reshaping batch...")
-            batch_inds_np = np.unravel_index(batch_inds, model.shape)
-            batch_inds_2d = list(zip(*batch_inds_np))
-            #batch_inds_2d = reshape_inds(batch_inds, model.shape)
-            print("getting targets...")
-            batch_targets = data[batch_inds_np]
-            #batch_targets = data.flatten()[batch_inds]
             feed_dict = {
-                model.batch_inds: batch_inds_2d,
-                model.batch_targets: batch_targets,
+                model.batch_inds: batch_inds[batch],
+                model.batch_targets: batch_targets[batch],
             }
             print("SGD step...")
             sess.run(opt, feed_dict)
@@ -74,7 +72,7 @@ def cv_batch_fit(model, data, cv_frac, batch_frac, seed=0):
                 summary_writer.add_summary(summary, i)
                 # testing loss
                 feed_dict = {
-                    model.batch_inds: cv_inds_2d,
+                    model.batch_inds: cv_inds,
                     model.batch_targets: cv_targets,
                 }
                 loss, summary = sess.run([model.loss, test_summary], feed_dict)
