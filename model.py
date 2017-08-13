@@ -40,13 +40,16 @@ class Model(object):
 
 class BatchModel(Model):
 
-    def __init__(self): 
+    def __init__(self, shape):
+
+        self.shape = shape
+
         # placeholders for data fed in on each training step
-        self.batch_inds = tf.placeholder(tf.int64, (None, 2))
+        self.batch_mask = tf.placeholder(tf.bool, self.shape)
         self.batch_targets = tf.placeholder(tf.float32, (None,))
-        self.batch_size = tf.shape(self.batch_inds)[0]
 
         super().__init__()
+
 
     @property
     def loss(self):
