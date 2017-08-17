@@ -35,7 +35,7 @@ def cv_batch_fit(model, data, cv_frac, batch_frac, seed=0):
     summary_writer = tf.summary.FileWriter("./logs/"+subdir, graph=tf.get_default_graph())
 
     saver = tf.train.Saver()
-    save_path = "./checkpoints/" + subdir + "/model.ckpt"
+    save_path = "./checkpoints/" + subdir + "/ckpt"
 
     log_interval = 100
 
@@ -44,28 +44,32 @@ def cv_batch_fit(model, data, cv_frac, batch_frac, seed=0):
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         i = -1
-        while True:
-            i += 1
-            batch = i % n_batches
-            print(i)
-            feed_dict = {
-                model.batch_mask: batch_masks[batch],
-                model.batch_targets: batch_targets[batch],
-            }
-            print("SGD step...")
-            sess.run(opt, feed_dict)
-            # write logs and checkppoint model
-            if i % log_interval == 0:
-                print("logging...")
-                # training loss
-                loss, summary = sess.run([model.loss, train_summary], feed_dict)
-                summary_writer.add_summary(summary, i)
-                # testing loss
+        try:
+            while True:
+                i += 1
+                batch = i % n_batches
+                print(i)
                 feed_dict = {
-                    model.batch_mask: cv_mask,
-                    model.batch_targets: cv_targets,
+                    model.batch_mask: batch_masks[batch],
+                    model.batch_targets: batch_targets[batch],
                 }
-                loss, summary = sess.run([model.loss, test_summary], feed_dict)
-                summary_writer.add_summary(summary, i)
-                # checkpoint
-                saver.save(sess, save_path)
+                print("SGD step...")
+                sess.run(opt, feed_dict)
+                # write logs and checkppoint model
+                if i % log_interval == 0:
+                    print("logging...")
+                    # training loss
+                    loss, summary = sess.run([model.loss, train_summary], feed_dict)
+                    summary_writer.add_summary(summary, i)
+                    # testing loss
+                    feed_dict = {
+                        model.batch_mask: cv_mask,
+                        model.batch_targets: cv_targets,
+                    }
+                    loss, summary = sess.run([model.loss, test_summary], feed_dict)
+                    summary_writer.add_summary(summary, i)
+                    # checkpoint
+                    saver.save(sess, save_path)
+        except KeyboardInterrupt:
+            print("exiting...")
+

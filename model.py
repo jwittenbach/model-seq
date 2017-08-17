@@ -2,8 +2,14 @@ import tensorflow as tf
 
 class Model(object):
 
+    """
+    To implement an actual instance of this class, this class variable should
+    be replaced with a list of strings of all model parameter names. Make sure
+    that variable names are actually set to these values.
+    """
+    params = []
+
     def __init__(self):
-        self.params = {}
         self.estimate = self._generative_model()
 
     def sample(self, **params):
@@ -38,10 +44,17 @@ class Model(object):
                 feed_dict[self.params[k]] = v
         return feed_dict
 
+    @classmethod
+    def restore(cls, path, session=None):
+        if session is None:
+            session = tf.Session()
+        saver = tf.train.import_meta_graph(path + "ckpt.meta")
+        saver.restore(session, tf.train.latest_checkpoint(path))
+        return {p: session.run(p + ":0") for p in cls.params}
+
 class BatchModel(Model):
 
     def __init__(self, shape):
-
         self.shape = shape
 
         # placeholders for data fed in on each training step
@@ -49,7 +62,6 @@ class BatchModel(Model):
         self.batch_targets = tf.placeholder(tf.float32, (None,))
 
         super().__init__()
-
 
     @property
     def loss(self):

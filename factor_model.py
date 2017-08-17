@@ -5,6 +5,8 @@ from model import BatchModel
 
 class FactorModel(BatchModel):
 
+    params = ["C", "G", "p"]
+
     def __init__(self, n_cells, n_genes, k):
         self.n_cells = n_cells
         self.n_genes = n_genes
@@ -16,10 +18,8 @@ class FactorModel(BatchModel):
     def _generative_model(self):
 
         # low-rank factorization
-        C = tf.Variable(tf.random_uniform((self.n_cells, self.k)))
-        G = tf.Variable(tf.random_uniform((self.k, self.n_genes)))
-        self.params['C'] = C
-        self.params['G'] = G
+        C = tf.Variable(tf.random_uniform((self.n_cells, self.k)), name="C")
+        G = tf.Variable(tf.random_uniform((self.k, self.n_genes)), name="G")
 
         X = tf.matmul(C, G)
 
@@ -31,8 +31,7 @@ class FactorModel(BatchModel):
         M_sample = tf.exp(X_sample)+1 
 
         # per-element categorical variables with probs [p, 1-p]
-        p = tf.sigmoid(tf.Variable(tf.random_uniform((1,))[0]))
-        self.params['p'] = p
+        p = tf.sigmoid(tf.Variable(tf.random_uniform((1,))[0]), name="p")
         probs = tf.tile([1-p, p], (n_samples,))
         probs = tf.reshape(probs, (-1, 2))
         cat = Categorical(probs=probs)
