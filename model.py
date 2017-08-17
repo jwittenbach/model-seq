@@ -45,12 +45,13 @@ class Model(object):
         return feed_dict
 
     @classmethod
-    def restore(cls, path, session=None):
-        if session is None:
-            session = tf.Session()
-        saver = tf.train.import_meta_graph(path + "ckpt.meta")
-        saver.restore(session, tf.train.latest_checkpoint(path))
-        return {p: session.run(p + ":0") for p in cls.params}
+    def restore(cls, path):
+        with tf.Session() as sess:
+            saver = tf.train.import_meta_graph(path + "ckpt.meta")
+            saver.restore(sess, tf.train.latest_checkpoint(path))
+            values = {p: sess.run(p + ":0") for p in cls.params}
+        return values
+
 
 class BatchModel(Model):
 
