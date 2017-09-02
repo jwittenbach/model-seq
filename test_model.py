@@ -26,9 +26,9 @@ class FactorModel(BatchModel):
         # from this point on, everything is element-wise
         X_sample = tf.boolean_mask(X, self.batch_mask)
         n_samples = tf.shape(X_sample)[0]
-        
+
         # simple non-linearity
-        M_sample = tf.exp(X_sample)+1 
+        M_sample = tf.exp(X_sample)-1
 
         # per-element categorical variables with probs [p, 1-p]
         p = tf.sigmoid(tf.Variable(tf.random_uniform((1,))[0]), name="p")
