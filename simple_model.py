@@ -5,7 +5,7 @@ from model import BatchModel
 
 class SimpleModel(BatchModel):
 
-    params = ["C", "G", "a", "b"]
+    params = ["C", "G", "s_c", "c_g", "a", "b"]
 
     def __init__(self, n_cells, n_genes, k):
         self.n_cells = n_cells
@@ -20,10 +20,12 @@ class SimpleModel(BatchModel):
         # low-rank factorization
         C = tf.Variable(tf.random_uniform((self.n_cells, self.k)), name="C")
         G = tf.Variable(tf.random_uniform((self.k, self.n_genes)), name="G")
+        s_c = tf.Variable(tf.random_normal((self.n_cells, 1)), name="s_c")
+        s_g = tf.Variable(tf.random_normal((1, self.n_genes)), name="s_g")
 
-        X = tf.matmul(C, G)
+        X = tf.matmul(C, G) + s_c + s_g
 
-        # from this point on, everything is element-wise
+        # extract matrix elements for mini-batch
         X_sample = tf.boolean_mask(X, self.batch_mask)
         n_samples = tf.shape(X_sample)[0]
 
