@@ -1,9 +1,11 @@
 import tensorflow as tf
 from tensorflow.contrib.distributions import \
     Poisson, Categorical, Mixture, Deterministic
-from model import BatchModel
 
-class FactorModel(BatchModel):
+from modelseq.model import BatchModel
+
+
+class SimpleModel(BatchModel):
 
     params = ["C", "G", "p"]
 
@@ -23,16 +25,16 @@ class FactorModel(BatchModel):
 
         X = tf.matmul(C, G)
 
-        # from this point on, everything is element-wise
+        # extract matrix elements for mini-batch
         X_sample = tf.boolean_mask(X, self.batch_mask)
         n_samples = tf.shape(X_sample)[0]
 
         # simple non-linearity
-        M_sample = tf.exp(X_sample)-1
+        M_sample = tf.exp(X_sample)
 
         # per-element categorical variables with probs [p, 1-p]
         p = tf.sigmoid(tf.Variable(tf.random_uniform((1,))[0]), name="p")
-        probs = tf.tile([1-p, p], (n_samples,))
+        probs = tf.tile([1 - p, p], (n_samples,))
         probs = tf.reshape(probs, (-1, 2))
         cat = Categorical(probs=probs)
 
@@ -41,20 +43,4 @@ class FactorModel(BatchModel):
         dropout = Deterministic(0.0*tf.ones((n_samples,)))
         counts = Mixture(cat, [signal, dropout])
         
-        return counts 
-
-if __name__ == "__main__":
-    import numpy as np
-    from train import cv_batch_fit
-
-    n_cells, n_genes, k = 10, 5, 3
-    model = FactorModel(n_cells, n_genes, k)
-
-    C = np.random.randn(n_cells, k)
-    G = np.random.randn(k, n_genes)
-    print(np.exp(np.dot(C, G)))
-    data = model.sample(batch_inds=np.arange(n_cells*n_genes, dtype='int64'), C=C, G=G, p=0.0)
-    data = data.reshape(n_cells, n_genes)
-    print(data)
-    result = cv_batch_fit(model, data, cv_frac=0.05, batch_frac=0.2)
-    print(result)
+        return counts

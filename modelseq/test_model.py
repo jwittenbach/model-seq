@@ -1,10 +1,10 @@
-import tensorflow as tf
 import numpy as np
-
+import tensorflow as tf
 from tensorflow.contrib.distributions import \
     NegativeBinomial, Categorical, Mixture, Deterministic
-from model import Model
-from train import cv_batch_fit
+
+from modelseq.model import Model
+
 
 class TestModel(Model):
 
@@ -30,10 +30,3 @@ class TestModel(Model):
         z = Mixture(cat, [z1, z2])
     
         return z
-
-if __name__ == "__main__":
-    model = TestModel(n_cells=5, n_genes=10)
-
-    data = model.sample(p=0.2)
-    print(data)
-

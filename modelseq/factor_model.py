@@ -1,9 +1,11 @@
 import tensorflow as tf
 from tensorflow.contrib.distributions import \
     Poisson, Categorical, Mixture, Deterministic
-from model import BatchModel
 
-class SimpleModel(BatchModel):
+from modelseq.model import BatchModel
+
+
+class FactorModel(BatchModel):
 
     params = ["C", "G", "s_c", "c_g", "a", "b"]
 
@@ -47,21 +49,3 @@ class SimpleModel(BatchModel):
         counts = Mixture(cat, [signal, dropout])
         
         return counts
-
-if __name__ == "__main__":
-    import numpy as np
-    from train import cv_batch_fit
-
-    n_cells, n_genes, k = 10, 5, 3
-    model = SimpleModel(n_cells, n_genes, k)
-
-    C = np.random.randn(n_cells, k)
-    G = np.random.randn(k, n_genes)
-    a = 3
-    b = 1
-    print(np.exp(np.dot(C, G)))
-    data = model.sample(batch_inds=np.arange(n_cells*n_genes, dtype='int64'), C=C, G=G, a=a, b=b)
-    data = data.reshape(n_cells, n_genes)
-    print(data)
-    result = cv_batch_fit(model, data, cv_frac=0.05, batch_frac=0.2)
-    print(result)
