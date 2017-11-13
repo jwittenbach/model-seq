@@ -20,7 +20,7 @@ class Model(object):
         return counts
 
     @property
-    def loss(self, data):
+    def base_loss(self, data):
         return -tf.reduce_mean(self.estimate.log_prob(data))
 
     def _generative_model(self):
@@ -65,7 +65,7 @@ class BatchModel(Model):
         super().__init__()
 
     @property
-    def loss(self):
+    def base_loss(self):
        return -tf.reduce_mean(self.estimate.log_prob(self.batch_targets)) 
 
     def _get_feed_dict(self, params):

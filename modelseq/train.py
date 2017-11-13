@@ -29,12 +29,30 @@ def cv_batch_fit(model, data, cv_mask=None, batch_masks=None, n_steps=None, dir=
     train_summary = tf.summary.scalar("training_loss", model.loss)
     test_summary = tf.summary.scalar("testing_loss", model.loss)
 
+    neg_log_probs = -model.estimate.log_prob(model.batch_targets)
+    max_log_prob = tf.summary.scalar("max_log_proba", tf.reduce_max(neg_log_probs))
+    min_log_prob = tf.summary.scalar("min_log_proba", tf.reduce_min(neg_log_probs))
+
+    graph = tf.get_default_graph()
+    variable_summaries = []
+    params = ['X', 'C', 'G']
+    # params = ['X', 'C', 'G', 's_c', 's_g']
+    for p in params:
+        val = graph.get_tensor_by_name(p + ':0')
+        variable_summaries.append(tf.summary.scalar('max_' + p, tf.reduce_max(val)))
+        variable_summaries.append(tf.summary.scalar('min_' + p, tf.reduce_min(val)))
+    params = []
+    # params = ['a', 'b', 'r']
+    for p in params:
+        val = graph.get_tensor_by_name(p + ':0')
+        variable_summaries.append(tf.summary.scalar(p, val))
+
     summary_writer = tf.summary.FileWriter("logs/" + subdir, graph=tf.get_default_graph())
 
     saver = tf.train.Saver()
     save_path = "checkpoints/" + subdir + "/ckpt"
 
-    log_interval = 100
+    log_interval = 10
 
     opt = tf.train.AdamOptimizer().minimize(model.loss)
 
@@ -60,7 +78,7 @@ def cv_batch_fit(model, data, cv_mask=None, batch_masks=None, n_steps=None, dir=
                 sess.run(opt, feed_dict)
 
                 if i % log_interval == 0:
-                    logger.info("logging...")
+                    logger.info("step {}, logging...".format(i))
 
                     # training loss
                     loss, summary = sess.run([model.loss, train_summary], feed_dict)
@@ -69,6 +87,15 @@ def cv_batch_fit(model, data, cv_mask=None, batch_masks=None, n_steps=None, dir=
                     # testing loss
                     loss, summary = sess.run([model.loss, test_summary], cv_feed_dict)
                     summary_writer.add_summary(summary, i)
+
+                    _, min_prob_summ, max_prob_summ\
+                        = sess.run([neg_log_probs, min_log_prob, max_log_prob], feed_dict)
+                    summary_writer.add_summary(min_prob_summ, i)
+                    summary_writer.add_summary(max_prob_summ, i)
+
+                    summaries = sess.run(variable_summaries)
+                    for summary in summaries:
+                        summary_writer.add_summary(summary, i)
 
                     # checkpoint
                     # saver.save(sess, save_path)
