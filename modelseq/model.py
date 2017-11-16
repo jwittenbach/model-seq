@@ -1,27 +1,75 @@
+import numpy as np
 import tensorflow as tf
 
-class Model(object):
 
-    """
-    To implement an actual instance of this class, this class variable should
-    be replaced with a list of strings of all model parameter names. Make sure
-    that variable names are actually set to these values.
-    """
-    params = []
+class MLFactorModel(object):
 
-    def __init__(self):
+    def __init__(self, shape):
+        self.shape = shape
+
+        # placeholders minibatch information
+        self.batch_mask = tf.placeholder(tf.bool, self.shape)
+        self.batch_targets = tf.placeholder(tf.float32, (None,))
+
+        # make the computational graph for the forward model
         self.estimate = self._generative_model()
 
-    def sample(self, **params):
-        feed_dict = self._get_feed_dict(params)
-        with tf.Session() as sess:
-            sess.run(tf.global_variables_initializer())
-            counts = sess.run(self.estimate.sample(), feed_dict)
-        return counts
+        self.session = tf.Session()
+        self.session.run(tf.global_variables_initializer())
 
     @property
-    def base_loss(self, data):
-        return -tf.reduce_mean(self.estimate.log_prob(data))
+    def parameters(self):
+        return {k: self.session.run(v) for k, v in self.get_variables().items()}
+
+    def sample(self, batch_mask=None, **params):
+        feed_dict = self._get_feed_dict(batch_mask=batch_mask, **params)
+        result = self.session.run(self.estimate.sample(), feed_dict)
+        if batch_mask is None:
+            result = result.reshape(self.shape)
+        return result
+
+    def _get_feed_dict(self, batch_mask=None, **params):
+        variable_map = self.get_variables()
+        feed_dict = {}
+        for k, v in params.items():
+            if k in variable_map.keys():
+                feed_dict[variable_map[k]] = v
+            else:
+                print("Error: '{}' is not a valid parameter name")
+                break
+        batch_mask = np.ones(self.shape, dtype=bool) if batch_mask is None else batch_mask
+        feed_dict[self.batch_mask] = batch_mask
+        return feed_dict
+
+    def save(self, path):
+        saver = tf.train.Saver()
+        saver.save(self.session, path + "/ckpt")
+
+    @classmethod
+    def get_variables(cls):
+        return {v.name.split(":")[0]: v for v in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)}
+
+    @classmethod
+    def load_variables(cls, path):
+        with tf.Session() as sess:
+            saver = tf.train.import_meta_graph(path + "/ckpt.meta")
+            saver.restore(sess, tf.train.latest_checkpoint(path))
+            values = {k: sess.run(v) for k, v in cls.get_variables().items()}
+        return values
+
+    @property
+    def ml_loss(self):
+       return -tf.reduce_mean(self.estimate.log_prob(self.batch_targets))
+
+    @property
+    def loss(self):
+        """
+        For an implementation of this class, this functional can be overridden
+        to modify the loss (e.g. add regularization terms)
+
+        The property should return tensor representing the loss.
+        """
+        return self.ml_loss
 
     def _generative_model(self):
         """
@@ -33,43 +81,8 @@ class Model(object):
         models the data
         - any Variables that represenent parameters to be fit should be added
           to the dictionary self.params['param_name'] = Variable
-        - the function should return the Tensor that models the data 
+        - the function should return the Tensor that models the data
         """
         raise NotImplementedError
 
-    def _get_feed_dict(self, params):
-        feed_dict = {}
-        for k, v in params.items():
-            if k in self.params.keys():
-                feed_dict[self.params[k]] = v
-        return feed_dict
-
-    @classmethod
-    def restore(cls, path):
-        with tf.Session() as sess:
-            saver = tf.train.import_meta_graph(path + "ckpt.meta")
-            saver.restore(sess, tf.train.latest_checkpoint(path))
-            values = {p: sess.run(p + ":0") for p in cls.params}
-        return values
-
-
-class BatchModel(Model):
-
-    def __init__(self, shape):
-        self.shape = shape
-
-        # placeholders for data fed in on each training step
-        self.batch_mask = tf.placeholder(tf.bool, self.shape)
-        self.batch_targets = tf.placeholder(tf.float32, (None,))
-
-        super().__init__()
-
-    @property
-    def base_loss(self):
-       return -tf.reduce_mean(self.estimate.log_prob(self.batch_targets)) 
-
-    def _get_feed_dict(self, params):
-        feed_dict = super()._get_feed_dict(params)
-        feed_dict[self.batch_inds] = params["batch_inds"]
-        return feed_dict
 
