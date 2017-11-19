@@ -2,12 +2,11 @@ import logging
 import os
 
 import numpy as np
-from scipy.io import mmread
 import tensorflow as tf
+from scipy.io import mmread
 
+from modelseq.models.factor_model import FactorModel
 from modelseq.train import cv_batch_fit, make_masks
-from modelseq.factor_model import FactorModel
-from modelseq.nb_model import NBModel
 
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 # logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)

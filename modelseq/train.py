@@ -7,129 +7,108 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def cv_batch_fit(model, data, cv_mask=None, batch_masks=None, n_steps=None, dir=None, seed=0):
+class Trainer(object):
 
-    if dir is None:
-        subdir = strftime("%y.%m.%d-%H.%M.%S")
-    else:
-        subdir = dir
+    def __init__(self, model, data, optimizer, cv_frac, batch_frac,
+                 logdir=None, batch_seed=0, init_seed=0):
 
-    np.random.seed(seed)
+        self.model = model
+        self.data = data
+        self.optimizer = optimizer
 
-    n_batches = len(batch_masks)
+        self.logdir = strftime("%y.%m.%d-%H.%M.%S") if logdir is None else logdir
 
-    cv_targets = data[cv_mask]
-    cv_feed_dict = {
-        model.batch_mask: cv_mask,
-        model.batch_targets: cv_targets,
-    }
-    batch_targets = [data[mask] for mask in batch_masks]
+        # make boolean masks to for CV and batch sets
+        masks = self._make_masks(cv_frac, batch_frac, batch_seed)
 
-    # logging / checkpointing
-    train_summary = tf.summary.scalar("training_loss", model.loss)
-    test_summary = tf.summary.scalar("testing_loss", model.loss)
+        cv_mask = masks[0]
+        self.cv_feed_dict = {
+            self.model.batch_mask: cv_mask,
+            self.model.batch_targets: data[cv_mask]
+        }
 
-    neg_log_probs = -model.estimate.log_prob(model.batch_targets)
-    max_log_prob = tf.summary.scalar("max_log_proba", tf.reduce_max(neg_log_probs))
-    min_log_prob = tf.summary.scalar("min_log_proba", tf.reduce_min(neg_log_probs))
+        self.batch_masks = masks[1]
+        self.batch_targets = [data[mask] for mask in self.batch_masks]
+        self.batch_feed_dict = None
+        self.n_batches = len(self.batch_masks)
 
-    graph = tf.get_default_graph()
-    variable_summaries = []
-    params = ['X', 'C', 'G']
-    # params = ['X', 'C', 'G', 's_c', 's_g']
-    for p in params:
-        val = graph.get_tensor_by_name(p + ':0')
-        variable_summaries.append(tf.summary.scalar('max_' + p, tf.reduce_max(val)))
-        variable_summaries.append(tf.summary.scalar('min_' + p, tf.reduce_min(val)))
-    params = []
-    # params = ['a', 'b', 'r']
-    for p in params:
-        val = graph.get_tensor_by_name(p + ':0')
-        variable_summaries.append(tf.summary.scalar(p, val))
+        np.random.seed(init_seed)
 
-    summary_writer = tf.summary.FileWriter("logs/" + subdir, graph=tf.get_default_graph())
+        # set up monitoring
+        self.summary_writer, self.summaries = self._prepare_monitoring()
 
-    saver = tf.train.Saver()
-    save_path = "checkpoints/" + subdir + "/ckpt"
+    def _make_masks(self, cv_frac, batch_frac, batch_seed):
 
-    log_interval = 10
+        np.random.seed(batch_seed)
 
-    opt = tf.train.AdamOptimizer().minimize(model.loss)
+        n_elems = np.prod(self.model.shape)
+        n_cv = np.floor(cv_frac * n_elems).astype(int)
+        n_batch = np.floor(batch_frac * n_elems).astype(int)
+        n_batches = np.round((n_elems - n_cv) / n_batch).astype(int)
 
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        i = -1
-        try:
+        inds = np.random.permutation(np.arange(n_elems))
 
-            while True:
-                i += 1
-                if n_steps and i > n_steps:
-                    break
+        cv_inds = inds[:n_cv]
+        cv_mask = np.zeros(self.model.shape, dtype=bool)
+        cv_mask[np.unravel_index(cv_inds, self.model.shape)] = True
 
-                logger.debug("sgd step {}...".format(i))
+        train_inds = inds[n_cv:]
+        batches = np.array_split(train_inds, n_batches)
+        batch_masks = []
+        for i in range(n_batches):
+            batch_masks.append(np.zeros(self.model.shape, dtype=bool))
+            batch_masks[i][np.unravel_index(batches[i], self.model.shape)] = True
 
-                # batch = i % n_batches
-                batch = np.random.randint(n_batches)
+        return cv_mask, batch_masks
 
-                feed_dict = {
-                    model.batch_mask: batch_masks[batch],
-                    model.batch_targets: batch_targets[batch],
-                }
-                sess.run(opt, feed_dict)
+    def _prepare_monitoring(self):
 
-                if i % log_interval == 0:
-                    logger.info("step {}, logging...".format(i))
+        train_loss = tf.summary.scalar("training_loss", self.model.loss)
+        test_loss = tf.summary.scalar("testing_loss", self.model.loss)
 
-                    # training loss
-                    loss, summary = sess.run([model.loss, train_summary], feed_dict)
-                    summary_writer.add_summary(summary, i)
+        variables = []
+        for name, variable in self.model.get_variables().items():
+            # scalars
+            if variable.shape.ndims < 2:
+                variables.append(tf.summary.scalar(name, variable))
+            # matrices
+            else:
+                variables.append(tf.summary.histogram(name, variable))
 
-                    # testing loss
-                    loss, summary = sess.run([model.loss, test_summary], cv_feed_dict)
-                    summary_writer.add_summary(summary, i)
+        summaries = {
+            'train_loss': train_loss,
+            'test_loss': test_loss,
+            'variables': variables
+        }
 
-                    _, min_prob_summ, max_prob_summ\
-                        = sess.run([neg_log_probs, min_log_prob, max_log_prob], feed_dict)
-                    summary_writer.add_summary(min_prob_summ, i)
-                    summary_writer.add_summary(max_prob_summ, i)
+        summary_writer = tf.summary.FileWriter("logs/"+self.logdir, graph=tf.get_default_graph())
 
-                    summaries = sess.run(variable_summaries)
-                    for summary in summaries:
-                        summary_writer.add_summary(summary, i)
+        return summary_writer, summaries
 
-                    # checkpoint
-                    # saver.save(sess, save_path)
+    def summarize(self, step, train_loss=True, test_loss=True, variables=False):
 
-        except KeyboardInterrupt:
-            logger.info("interrupted...")
+        if train_loss:
+            _, summary = self.model.session.run(
+                [self.model.loss, self.summaries["train_loss"]], self.batch_feed_dict
+            )
+            self.summary_writer.add_summary(summary, step)
 
-        cv_loss = sess.run(model.loss, cv_feed_dict)
-        saver.save(sess, save_path)
+        if test_loss:
+            _, summary = self.model.session.run(
+                [self.model.loss, self.summaries["test_loss"]], self.cv_feed_dict
+            )
+            self.summary_writer.add_summary(summary, step)
 
-    return cv_loss
+        if variables:
+            summaries =self.model.run(self.summaries["variables"])
+            for summary in summaries:
+                self.summary_writer.add_summary(summary, step)
 
+    def step(self):
 
-def make_masks(shape, cv_frac, batch_frac, seed=0):
-
-    logger.info("generating batches...")
-    np.random.seed(seed)
-
-    n_elems = np.prod(shape)
-    n_cv = np.floor(cv_frac * n_elems).astype(int)
-    n_batch = np.floor(batch_frac * n_elems).astype(int)
-    n_batches = np.round((n_elems - n_cv) / n_batch).astype(int)
-
-    inds = np.random.permutation(np.arange(n_elems))
-
-    cv_inds = inds[:n_cv]
-    cv_mask = np.zeros(shape, dtype=bool)
-    cv_mask[np.unravel_index(cv_inds, shape)] = True
-
-    train_inds = inds[n_cv:]
-    batches = np.array_split(train_inds, n_batches)
-    batch_masks = []
-    for i in range(n_batches):
-        batch_masks.append(np.zeros(shape, dtype=bool))
-        batch_masks[i][np.unravel_index(batches[i], shape)] = True
-
-    return cv_mask, batch_masks
+        batch = np.random.randint(self.n_batches)
+        self.batch_feed_dict = {
+            self.model.batch_mask: self.batch_masks[batch],
+            self.model.batch_targets: self.batch_targets[batch]
+        }
+        self.model.session.run(self.optimizer, self.batch_feed_dict)

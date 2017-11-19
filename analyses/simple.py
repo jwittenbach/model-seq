@@ -1,12 +1,9 @@
 import logging
 
 import numpy as np
-from scipy.io import mmread
-from modelseq.simple_model import SimpleModel
-from modelseq.nb_model import NBModel
 
+from modelseq.models.simple_model import SimpleModel
 from modelseq.train import cv_batch_fit, make_masks
-
 
 logger = logging.getLogger(__name__)
 # logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
