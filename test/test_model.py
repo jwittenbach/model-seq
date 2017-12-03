@@ -11,7 +11,7 @@ from modelseq.model import MLFactorModel
 MODEL_VAR_VALUE = 0.5
 MODEL_VAR_NAME = 'p'
 
-class TestModel(MLFactorModel):
+class SimpleModel(MLFactorModel):
 
     def _generative_model(self):
         ones = tf.constant(np.ones(self.shape).astype(np.float32))
@@ -32,14 +32,18 @@ class TestModel(MLFactorModel):
 
 class TestMLFactorModel(unittest.TestCase):
 
-    mask = np.array([
-        [True, False, False],
-        [True, False, True],
-        [True, False, False],
-        [False, True, True]
-    ])
-    shape = mask.shape
-    model = TestModel(shape)
+    @classmethod
+    def setUpClass(cls):
+        super(TestMLFactorModel, cls).setUpClass()
+
+        cls.mask = np.array([
+            [True, False, False],
+            [True, False, True],
+            [True, False, False],
+            [False, True, True]
+        ])
+        cls.shape = cls.mask.shape
+        cls.model = SimpleModel(cls.shape)
 
     def test_shape(self):
         self.assertEqual(self.model.shape, self.shape)

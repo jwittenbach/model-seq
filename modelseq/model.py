@@ -4,7 +4,7 @@ import tensorflow as tf
 
 class MLFactorModel(object):
 
-    def __init__(self, shape):
+    def __init__(self, shape, session=None):
         self.shape = shape
 
         # placeholders minibatch information
@@ -14,7 +14,7 @@ class MLFactorModel(object):
         # make the computational graph for the forward model
         self.estimate = self._generative_model()
 
-        self.session = tf.Session()
+        self.session = tf.Session() if session is None else session
         self.session.run(tf.global_variables_initializer())
 
     @property
