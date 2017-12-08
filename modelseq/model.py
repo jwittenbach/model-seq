@@ -4,14 +4,15 @@ import tensorflow as tf
 
 class MLFactorModel(object):
 
-    def __init__(self, shape, session=None):
+    def __init__(self, shape, session=None, init_seed=0):
         self.shape = shape
 
         # placeholders minibatch information
-        self.batch_mask = tf.placeholder(tf.bool, self.shape)
-        self.batch_targets = tf.placeholder(tf.float32, (None,))
+        self.batch_mask = tf.placeholder(tf.bool, self.shape, name="batch_mask")
+        self.batch_targets = tf.placeholder(tf.float32, (None,), name="batch_targets")
 
         # make the computational graph for the forward model
+        tf.set_random_seed(init_seed)
         self.estimate = self._generative_model()
 
         self.session = tf.Session() if session is None else session
@@ -20,6 +21,9 @@ class MLFactorModel(object):
     @property
     def parameters(self):
         return {k: self.session.run(v) for k, v in self.get_variables().items()}
+
+    def set_parameter(self, param, val):
+        self.session.run(self.get_variables()[param].assign(val))
 
     def sample(self, batch_mask=None, **params):
         feed_dict = self._get_feed_dict(batch_mask=batch_mask, **params)

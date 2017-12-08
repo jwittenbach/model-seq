@@ -10,13 +10,14 @@ logger = logging.getLogger(__name__)
 class Trainer(object):
 
     def __init__(self, model, data, optimizer, cv_frac, batch_frac,
-                 logdir=None, batch_seed=0, init_seed=0):
+                 logdir=None, logging=True, batch_seed=0):
 
         self.model = model
         self.data = data
-        self.optimizer = optimizer
+        self.optimizer = optimizer.minimize(model.loss)
+        self.logging = logging
 
-        self.logdir = strftime("%y.%m.%d-%H.%M.%S") if logdir is None else logdir
+        self.logdir = "logs/" + strftime("%Y.%m.%d-%H.%M.%S") if logdir is None else logdir
 
         # make boolean masks to for CV and batch sets
         masks = self._make_masks(cv_frac, batch_frac, batch_seed)
@@ -32,10 +33,17 @@ class Trainer(object):
         self.batch_feed_dict = None
         self.n_batches = len(self.batch_masks)
 
-        np.random.seed(init_seed)
-
         # set up monitoring
-        self.summary_writer, self.summaries = self._prepare_monitoring()
+        if self.logging:
+            self.summary_writer, self.summaries = self._prepare_monitoring()
+
+    @property
+    def cv_mask(self):
+        return self.cv_feed_dict[self.model.batch_mask]
+
+    @property
+    def cv_targets(self):
+        return self.cv_feed_dict[self.model.batch_targets]
 
     def _make_masks(self, cv_frac, batch_frac, batch_seed):
 
@@ -81,11 +89,15 @@ class Trainer(object):
             'variables': variables
         }
 
-        summary_writer = tf.summary.FileWriter("logs/"+self.logdir, graph=tf.get_default_graph())
+        summary_writer = tf.summary.FileWriter(self.logdir, graph=tf.get_default_graph())
 
         return summary_writer, summaries
 
     def summarize(self, step, train_loss=True, test_loss=True, variables=False):
+
+        if not self.logging:
+            print("warning: trying to summarize when logging has been inactivated")
+            return
 
         if train_loss:
             _, summary = self.model.session.run(
