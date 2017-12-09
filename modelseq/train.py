@@ -112,7 +112,7 @@ class Trainer(object):
             self.summary_writer.add_summary(summary, step)
 
         if variables:
-            summaries =self.model.run(self.summaries["variables"])
+            summaries = self.model.session.run(self.summaries["variables"])
             for summary in summaries:
                 self.summary_writer.add_summary(summary, step)
 

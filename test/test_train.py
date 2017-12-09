@@ -1,5 +1,4 @@
 import unittest
-from functools import reduce
 
 import tensorflow as tf
 from tensorflow.contrib.distributions import Normal
