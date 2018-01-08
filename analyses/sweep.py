@@ -2,14 +2,14 @@ import logging
 import os
 
 import numpy as np
-from scipy.io import mmread
 import tensorflow as tf
+from scipy.io import mmread
 
+from modelseq.models.factor_model import FactorModel
 from modelseq.train import cv_batch_fit, make_masks
-from modelseq.factor_model import FactorModel
 
-# logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
-logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
+logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
+# logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -27,21 +27,23 @@ epochs = 300
 n_steps = int(epochs / batch_frac)
 cv_mask, batch_masks = make_masks(data.shape, cv_frac=cv_frac, batch_frac=batch_frac)
 
-k_max = 20
+k_start = 1
+k_stop = 30
 results = []
 
-dir = "simple_sweep"
+dir = "nb_sweep"
 os.mkdir("checkpoints/{}".format(dir))
 os.mkdir("logs/{}".format(dir))
 
-for k in np.arange(k_max) + 1:
+for k in np.arange(k_start, k_stop+1):
     logger.info("fitting model with k = {}".format(k))
 
+    # model = FactorModel(n_cells, n_genes, k)
     model = FactorModel(n_cells, n_genes, k)
 
     test_loss = cv_batch_fit(
         model=model, data=data, cv_mask=cv_mask, batch_masks=batch_masks,
-        n_steps=n_steps, dir="simple_sweep/k{}".format(k)
+        n_steps=n_steps, dir="{}/k{}".format(dir, k)
     )
     results.append(test_loss)
     np.save("checkpoints/{}/results.npy".format(dir), results)

@@ -23,7 +23,7 @@ class SimpleModel(BatchModel):
         C = tf.Variable(tf.random_uniform((self.n_cells, self.k)), name="C")
         G = tf.Variable(tf.random_uniform((self.k, self.n_genes)), name="G")
 
-        X = tf.matmul(C, G)
+        X = tf.matmul(C, G, name="X")
 
         # extract matrix elements for mini-batch
         X_sample = tf.boolean_mask(X, self.batch_mask)

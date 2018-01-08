@@ -7,102 +7,120 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def cv_batch_fit(model, data, cv_mask=None, batch_masks=None, n_steps=None, dir=None, seed=0):
+class Trainer(object):
 
-    if dir is None:
-        subdir = strftime("%y.%m.%d-%H.%M.%S")
-    else:
-        subdir = dir
+    def __init__(self, model, data, optimizer, cv_frac, batch_frac,
+                 logdir=None, logging=True, batch_seed=0):
 
-    np.random.seed(seed)
+        self.model = model
+        self.data = data
+        self.optimizer = optimizer.minimize(model.loss)
+        self.logging = logging
 
-    n_batches = len(batch_masks)
+        self.logdir = "logs/" + strftime("%Y.%m.%d-%H.%M.%S") if logdir is None else logdir
 
-    cv_targets = data[cv_mask]
-    cv_feed_dict = {
-        model.batch_mask: cv_mask,
-        model.batch_targets: cv_targets,
-    }
-    batch_targets = [data[mask] for mask in batch_masks]
+        # make boolean masks to for CV and batch sets
+        masks = self._make_masks(cv_frac, batch_frac, batch_seed)
 
-    # logging / checkpointing
-    train_summary = tf.summary.scalar("training_loss", model.loss)
-    test_summary = tf.summary.scalar("testing_loss", model.loss)
+        cv_mask = masks[0]
+        self.cv_feed_dict = {
+            self.model.batch_mask: cv_mask,
+            self.model.batch_targets: data[cv_mask]
+        }
 
-    summary_writer = tf.summary.FileWriter("logs/" + subdir, graph=tf.get_default_graph())
+        self.batch_masks = masks[1]
+        self.batch_targets = [data[mask] for mask in self.batch_masks]
+        self.batch_feed_dict = None
+        self.n_batches = len(self.batch_masks)
 
-    saver = tf.train.Saver()
-    save_path = "checkpoints/" + subdir + "/ckpt"
+        # set up monitoring
+        if self.logging:
+            self.summary_writer, self.summaries = self._prepare_monitoring()
 
-    log_interval = 100
+    @property
+    def cv_mask(self):
+        return self.cv_feed_dict[self.model.batch_mask]
 
-    opt = tf.train.AdamOptimizer().minimize(model.loss)
+    @property
+    def cv_targets(self):
+        return self.cv_feed_dict[self.model.batch_targets]
 
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        i = -1
-        try:
+    def _make_masks(self, cv_frac, batch_frac, batch_seed):
 
-            while True:
-                i += 1
-                if n_steps and i > n_steps:
-                    break
+        np.random.seed(batch_seed)
 
-                logger.debug("sgd step {}...".format(i))
+        n_elems = np.prod(self.model.shape)
+        n_cv = np.floor(cv_frac * n_elems).astype(int)
+        n_batch = np.floor(batch_frac * n_elems).astype(int)
+        n_batches = np.round((n_elems - n_cv) / n_batch).astype(int)
 
-                # batch = i % n_batches
-                batch = np.random.randint(n_batches)
+        inds = np.random.permutation(np.arange(n_elems))
 
-                feed_dict = {
-                    model.batch_mask: batch_masks[batch],
-                    model.batch_targets: batch_targets[batch],
-                }
-                sess.run(opt, feed_dict)
+        cv_inds = inds[:n_cv]
+        cv_mask = np.zeros(self.model.shape, dtype=bool)
+        cv_mask[np.unravel_index(cv_inds, self.model.shape)] = True
 
-                if i % log_interval == 0:
-                    logger.info("logging...")
+        train_inds = inds[n_cv:]
+        batches = np.array_split(train_inds, n_batches)
+        batch_masks = []
+        for i in range(n_batches):
+            batch_masks.append(np.zeros(self.model.shape, dtype=bool))
+            batch_masks[i][np.unravel_index(batches[i], self.model.shape)] = True
 
-                    # training loss
-                    loss, summary = sess.run([model.loss, train_summary], feed_dict)
-                    summary_writer.add_summary(summary, i)
+        return cv_mask, batch_masks
 
-                    # testing loss
-                    loss, summary = sess.run([model.loss, test_summary], cv_feed_dict)
-                    summary_writer.add_summary(summary, i)
+    def _prepare_monitoring(self):
 
-                    # checkpoint
-                    # saver.save(sess, save_path)
+        train_loss = tf.summary.scalar("training_loss", self.model.loss)
+        test_loss = tf.summary.scalar("testing_loss", self.model.loss)
 
-        except KeyboardInterrupt:
-            logger.info("interrupted...")
+        variables = []
+        for name, variable in self.model.get_variables().items():
+            # scalars
+            if variable.shape.ndims < 2:
+                variables.append(tf.summary.scalar(name, variable))
+            # matrices
+            else:
+                variables.append(tf.summary.histogram(name, variable))
 
-        cv_loss = sess.run(model.loss, cv_feed_dict)
-        saver.save(sess, save_path)
+        summaries = {
+            'train_loss': train_loss,
+            'test_loss': test_loss,
+            'variables': variables
+        }
 
-    return cv_loss
+        summary_writer = tf.summary.FileWriter(self.logdir, graph=tf.get_default_graph())
 
+        return summary_writer, summaries
 
-def make_masks(shape, cv_frac, batch_frac, seed=0):
+    def summarize(self, step, train_loss=True, test_loss=True, variables=False):
 
-    logger.info("generating batches...")
-    np.random.seed(seed)
+        if not self.logging:
+            print("warning: trying to summarize when logging has been inactivated")
+            return
 
-    n_elems = np.prod(shape)
-    n_cv = np.floor(cv_frac * n_elems).astype(int)
-    n_batch = np.floor(batch_frac * n_elems).astype(int)
-    n_batches = np.round((n_elems - n_cv) / n_batch).astype(int)
+        if train_loss:
+            _, summary = self.model.session.run(
+                [self.model.loss, self.summaries["train_loss"]], self.batch_feed_dict
+            )
+            self.summary_writer.add_summary(summary, step)
 
-    inds = np.random.permutation(np.arange(n_elems))
+        if test_loss:
+            _, summary = self.model.session.run(
+                [self.model.loss, self.summaries["test_loss"]], self.cv_feed_dict
+            )
+            self.summary_writer.add_summary(summary, step)
 
-    cv_inds = inds[:n_cv]
-    cv_mask = np.zeros(shape, dtype=bool)
-    cv_mask[np.unravel_index(cv_inds, shape)] = True
+        if variables:
+            summaries = self.model.session.run(self.summaries["variables"])
+            for summary in summaries:
+                self.summary_writer.add_summary(summary, step)
 
-    train_inds = inds[n_cv:]
-    batches = np.array_split(train_inds, n_batches)
-    batch_masks = []
-    for i in range(n_batches):
-        batch_masks.append(np.zeros(shape, dtype=bool))
-        batch_masks[i][np.unravel_index(batches[i], shape)] = True
+    def step(self):
 
-    return cv_mask, batch_masks
+        batch = np.random.randint(self.n_batches)
+        self.batch_feed_dict = {
+            self.model.batch_mask: self.batch_masks[batch],
+            self.model.batch_targets: self.batch_targets[batch]
+        }
+        self.model.session.run(self.optimizer, self.batch_feed_dict)

@@ -1,13 +1,13 @@
 import tensorflow as tf
 from tensorflow.contrib.distributions import \
-    Poisson, Categorical, Mixture, Deterministic
+    NegativeBinomial, Categorical, Mixture, Deterministic
 
 from modelseq.model import BatchModel
 
 
-class FactorModel(BatchModel):
+class NBModel(BatchModel):
 
-    params = ["C", "G", "s_c", "c_g", "a", "b"]
+    params = ["C", "G", "s_c", "s_g", "a", "b", "r"]
 
     def __init__(self, n_cells, n_genes, k):
         self.n_cells = n_cells
@@ -25,7 +25,8 @@ class FactorModel(BatchModel):
         s_c = tf.Variable(tf.random_normal((self.n_cells, 1)), name="s_c")
         s_g = tf.Variable(tf.random_normal((1, self.n_genes)), name="s_g")
 
-        X = tf.matmul(C, G) + s_c + s_g
+        #X = tf.matmul(C, G) + s_c + s_g
+        X = tf.matmul(C, G, name='X')
 
         # extract matrix elements for mini-batch
         X_sample = tf.boolean_mask(X, self.batch_mask)
@@ -43,8 +44,13 @@ class FactorModel(BatchModel):
         probs = tf.stack([1-p, p], axis=-1)
         cat = Categorical(probs=probs)
 
-        # counts are mixture model between Poisson(M) (signal) and 0 (dropout)
-        signal = Poisson(M_sample) 
+        # NB is parameterized in terms of probs (P) and dispersion parameter (r),
+        # P is related to mean number of counts (M)
+        r = tf.nn.relu(tf.Variable(1.0, name="r"))
+        P = M_sample / (M_sample + r)
+
+        # counts are mixture model between NB (signal) and 0 (dropout)
+        signal = NegativeBinomial(r, probs=P)
         dropout = Deterministic(0.0*tf.ones((n_samples,)))
         counts = Mixture(cat, [signal, dropout])
         
