@@ -2,26 +2,25 @@ import tensorflow as tf
 from tensorflow.contrib.distributions import \
     Poisson, Categorical, Mixture, Deterministic
 
-from modelseq.model import BatchModel
+from modelseq.model import MLFactorModel
 
 
-class SimpleModel(BatchModel):
+class SimpleModel(MLFactorModel):
 
-    params = ["C", "G", "p"]
-
-    def __init__(self, n_cells, n_genes, k):
-        self.n_cells = n_cells
-        self.n_genes = n_genes
+    def __init__(self, k, alpha, *args, **kwargs):
         self.k = k
+        self.alpha = alpha
+        super().__init__(*args, **kwargs)
 
-        shape = (n_cells, n_genes)
-        super().__init__(shape)
 
     def _generative_model(self):
+        """
+        Required override
+        """
 
         # low-rank factorization
-        C = tf.Variable(tf.random_uniform((self.n_cells, self.k)), name="C")
-        G = tf.Variable(tf.random_uniform((self.k, self.n_genes)), name="G")
+        C = tf.Variable(tf.random_uniform((self.shape[0], self.k)), name="C")
+        G = tf.Variable(tf.random_uniform((self.k, self.shape[1])), name="G")
 
         X = tf.matmul(C, G, name="X")
 
@@ -44,3 +43,11 @@ class SimpleModel(BatchModel):
         counts = Mixture(cat, [signal, dropout])
         
         return counts
+
+
+    # @property
+    # def loss(self):
+    #     """
+    #     Override
+    #     """
+    #     return self.ml_loss + self.alpha * tf.norm(self.get_variables()['C'])

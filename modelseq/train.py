@@ -1,4 +1,5 @@
 import logging
+import tempfile
 from time import strftime
 
 import tensorflow as tf
@@ -14,10 +15,13 @@ class Trainer(object):
 
         self.model = model
         self.data = data
-        self.optimizer = optimizer.minimize(model.loss)
+        self.optimizer = optimizer
         self.logging = logging
 
         self.logdir = "logs/" + strftime("%Y.%m.%d-%H.%M.%S") if logdir is None else logdir
+
+        # ugh
+        self.fit = self._get_fit_op()
 
         # make boolean masks to for CV and batch sets
         masks = self._make_masks(cv_frac, batch_frac, batch_seed)
@@ -36,6 +40,19 @@ class Trainer(object):
         # set up monitoring
         if self.logging:
             self.summary_writer, self.summaries = self._prepare_monitoring()
+
+        # initialize slot variables from optimizer
+
+    def _get_fit_op(self):
+        saver = tf.train.Saver()
+        with tempfile.TemporaryDirectory() as dir_name:
+            save_path = saver.save(self.model.session, dir_name+"vars.ckpt")
+            fit = self.optimizer.minimize(self.model.loss)
+            self.model.session.run(tf.global_variables_initializer())
+            saver.restore(self.model.session, save_path)
+        return fit
+
+
 
     @property
     def cv_mask(self):
@@ -123,4 +140,4 @@ class Trainer(object):
             self.model.batch_mask: self.batch_masks[batch],
             self.model.batch_targets: self.batch_targets[batch]
         }
-        self.model.session.run(self.optimizer, self.batch_feed_dict)
+        self.model.session.run(self.fit, self.batch_feed_dict)

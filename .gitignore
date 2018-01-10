@@ -1,2 +1,5 @@
 logs
 checkpoints
+__pycache__/
+.idea
+*.egg-info/
