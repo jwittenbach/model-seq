@@ -12,10 +12,10 @@ from modelseq.model import MLFactorModel
 N_SAMPLES = 200
 N_COLS = 10
 MODEL_VECTOR_VALUE = 5 + np.arange(N_COLS)[np.newaxis, :].astype(np.float32)
-MODEL_VECTOR_NAME = "v"
+MODEL_VECTOR_NAME = "vec"
 MODEL_PROB_VALUE = 0.2
 MODEL_PROB_INV_SIGMOID = -1.3862943611198906
-MODEL_PROB_NAME = "p"
+MODEL_PROB_NAME = "prob"
 
 
 class VectorModel(MLFactorModel):
@@ -43,7 +43,7 @@ class TestSummarize(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(TestSummarize, cls).setUpClass()
+        super().setUpClass()
 
         cls.model = VectorModel((N_SAMPLES, N_COLS))
         cls.data = cls.model.sample()
@@ -52,6 +52,13 @@ class TestSummarize(unittest.TestCase):
         cls.train = Trainer(
             model=cls.model, data=cls.data, optimizer=cls.opt, cv_frac=0.2, batch_frac=0.1
         )
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+        cls.model.close()
+        tf.reset_default_graph()
 
     def test_summarize(self):
 

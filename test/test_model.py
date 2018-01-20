@@ -36,7 +36,7 @@ class TestMLFactorModel(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(TestMLFactorModel, cls).setUpClass()
+        super().setUpClass()
 
         cls.mask = np.array([
             [True, False, False],
@@ -46,6 +46,13 @@ class TestMLFactorModel(unittest.TestCase):
         ])
         cls.shape = cls.mask.shape
         cls.model = SimpleModel(cls.shape)
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+        cls.model.close()
+        tf.reset_default_graph()
 
     def test_shape(self):
         self.assertEqual(self.model.shape, self.shape)

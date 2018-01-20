@@ -32,6 +32,10 @@ class MLFactorModel(object):
             result = result.reshape(self.shape)
         return result
 
+    def close(self):
+        self.session.close()
+        tf.reset_default_graph()
+
     def _get_feed_dict(self, batch_mask=None, **params):
         variable_map = self.get_variables()
         feed_dict = {}

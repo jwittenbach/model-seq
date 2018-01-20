@@ -27,7 +27,7 @@ class TestTrainer(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(TestTrainer, cls).setUpClass()
+        super().setUpClass()
 
         cls.shape = (10, 10)
         cls.model = ConstantModel(cls.shape)
@@ -39,6 +39,13 @@ class TestTrainer(unittest.TestCase):
             model=cls.model, data=cls.data, optimizer=cls.opt, logging=False,
             cv_frac=CV_FRAC, batch_frac=BATCH_FRAC
         )
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+        cls.model.close()
+        tf.reset_default_graph()
 
     def test_masks(self):
         # quick calculations for when batches + CV evenly divide number of elements
