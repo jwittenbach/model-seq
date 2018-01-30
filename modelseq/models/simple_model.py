@@ -21,33 +21,38 @@ class SimpleModel(MLFactorModel):
         # low-rank factorization
         C = tf.Variable(tf.random_uniform((self.shape[0], self.k)), name="C")
         G = tf.Variable(tf.random_uniform((self.k, self.shape[1])), name="G")
+        # mu = tf.Variable(tf.random_uniform((self.shape[0], 1)), name='mu')
+        # mu_rep = tf.tile(mu, (1, self.shape[1]))
 
         X = tf.matmul(C, G, name="X")
 
         # extract matrix elements for mini-batch
         X_sample = tf.boolean_mask(X, self.batch_mask)
-        n_samples = tf.shape(X_sample)[0]
+        # mu_sample = tf.boolean_mask(mu_rep, self.batch_mask)
+        # n_samples = tf.shape(X_sample)[0]
 
         # simple non-linearity
         M_sample = tf.exp(X_sample)
 
         # per-element categorical variables with probs [p, 1-p]
-        p = tf.sigmoid(tf.Variable(tf.random_uniform((1,))[0]), name="p")
-        probs = tf.tile([1 - p, p], (n_samples,))
-        probs = tf.reshape(probs, (-1, 2))
-        cat = Categorical(probs=probs)
+        # p = tf.sigmoid(tf.Variable(tf.random_uniform((1,))[0]), name="p")
+        # probs = tf.tile([1 - p, p], (n_samples,))
+        # probs = tf.reshape(probs, (-1, 2))
+        # cat = Categorical(probs=probs)
 
         # counts are mixture model between Poisson(M) (signal) and 0 (dropout)
-        signal = Poisson(M_sample) 
-        dropout = Deterministic(0.0*tf.ones((n_samples,)))
-        counts = Mixture(cat, [signal, dropout])
+        # signal = Poisson(M_sample)
+        # dropout = Deterministic(0.0*tf.ones((n_samples,)))
+        # counts = Mixture(cat, [signal, dropout])
+
+        counts = Poisson(M_sample)
         
         return counts
 
 
-    # @property
-    # def loss(self):
-    #     """
-    #     Override
-    #     """
-    #     return self.ml_loss + self.alpha * tf.norm(self.get_variables()['C'])
+    @property
+    def loss(self):
+        """
+        Override
+        """
+        return self.ml_loss + self.alpha * tf.norm(self.get_variables()['C'])

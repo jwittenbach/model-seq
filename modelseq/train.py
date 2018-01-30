@@ -20,7 +20,7 @@ class Trainer(object):
 
         self.logdir = "logs/" + strftime("%Y.%m.%d-%H.%M.%S") if logdir is None else logdir
 
-        # ugh
+        # ugh -- necessary because some Optimizer subclasses have hidden Variables in them that must be initialized
         self.fit = self._get_fit_op()
 
         # make boolean masks to for CV and batch sets
@@ -41,8 +41,6 @@ class Trainer(object):
         if self.logging:
             self.summary_writer, self.summaries = self._prepare_monitoring()
 
-        # initialize slot variables from optimizer
-
     def _get_fit_op(self):
         saver = tf.train.Saver()
         with tempfile.TemporaryDirectory() as dir_name:
@@ -51,8 +49,6 @@ class Trainer(object):
             self.model.session.run(tf.global_variables_initializer())
             saver.restore(self.model.session, save_path)
         return fit
-
-
 
     @property
     def cv_mask(self):
@@ -70,6 +66,11 @@ class Trainer(object):
         n_cv = np.floor(cv_frac * n_elems).astype(int)
         n_batch = np.floor(batch_frac * n_elems).astype(int)
         n_batches = np.round((n_elems - n_cv) / n_batch).astype(int)
+
+        logger.debug("elements:\t{}".format(n_elems))
+        logger.debug("CV set size:\t{}".format(n_cv))
+        logger.debug("batch set size:\t{}".format(n_batch))
+        logger.debug("num batches:\t{}".format(n_batches))
 
         inds = np.random.permutation(np.arange(n_elems))
 
@@ -117,16 +118,18 @@ class Trainer(object):
             return
 
         if train_loss:
-            _, summary = self.model.session.run(
+            loss, summary = self.model.session.run(
                 [self.model.loss, self.summaries["train_loss"]], self.batch_feed_dict
             )
             self.summary_writer.add_summary(summary, step)
+            logger.debug("training loss:\t{}".format(loss))
 
         if test_loss:
-            _, summary = self.model.session.run(
+            loss, summary = self.model.session.run(
                 [self.model.loss, self.summaries["test_loss"]], self.cv_feed_dict
             )
             self.summary_writer.add_summary(summary, step)
+            logger.debug("testing loss:\t{}".format(loss))
 
         if variables:
             summaries = self.model.session.run(self.summaries["variables"])
@@ -136,6 +139,7 @@ class Trainer(object):
     def step(self):
 
         batch = np.random.randint(self.n_batches)
+        logger.debug("batch:\t{}".format(batch))
         self.batch_feed_dict = {
             self.model.batch_mask: self.batch_masks[batch],
             self.model.batch_targets: self.batch_targets[batch]

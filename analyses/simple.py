@@ -1,42 +1,69 @@
 import logging
 
 import numpy as np
+import tensorflow as tf
 
 from modelseq.models.simple_model import SimpleModel
-from modelseq.train import cv_batch_fit, make_masks
+from modelseq.train import Trainer
 
 logger = logging.getLogger(__name__)
-# logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
-logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
+log_format = "%(levelname)s:%(name)s:%(message)s"
+# logging.basicConfig(format=log_format, level=logging.INFO)
+logging.basicConfig(format=log_format, level=logging.DEBUG)
 
+log_path = "logs/simple/"
 
+# data
 logger.info("loading data...")
 
-# path = "/home/jason/Documents/matrix.mtx"
+# data_path = "/Users/jason/Documents/matrix.mtx"
 # data = mmread(path).toarray().T
 
-path = "/home/jason/Documents/sample.npy"
-data = np.load(path)
+data_path = "/Users/jason/Documents/sampled.npy"
+data = np.load(data_path)
 
 logger.info("data shape: {}".format(data.shape))
 
-logger.info("building model...")
-n_cells, n_genes = data.shape
-k = 5
+# model
+logger.info("specifying model...")
 
-cv_frac = 0.01
-batch_frac = 0.01
-epochs = 300
-n_steps = int(epochs / batch_frac)
+model = SimpleModel(shape=data.shape, k=5, alpha=0.01)
 
-model = SimpleModel(n_cells, n_genes, k)
-#model = NBModel(n_cells, n_genes, k)
+# mean_counts_per_cell = data.sum(axis=1).mean()
+# mu_init = np.tile(mean_counts_per_cell, data.shape[0])[:, np.newaxis]
+# model.set_parameter('mu', mu_init)
 
-logger.info("fitting model...")
-cv_mask, batch_masks = make_masks(data.shape, cv_frac=cv_frac, batch_frac=batch_frac)
+# training details
+logger.info("setting up training...")
 
-result = cv_batch_fit(
-    model=model, data=data, cv_mask=cv_mask, batch_masks=batch_masks,
-    n_steps=n_steps, dir="simple-small-{}".format(k)
+opt = tf.train.AdamOptimizer()
+
+train = Trainer(
+    model=model, data=data, optimizer=opt, cv_frac=0.1, batch_frac=0.9, logdir=log_path
 )
-logger.info("{}".format(result))
+
+epochs = 100000
+n_steps = epochs * train.n_batches
+logger.info("epochs:\t{}".format(epochs))
+logger.info("steps:\t{}".format(n_steps))
+
+# training loop
+logger.info("fitting model...")
+
+vars = model.parameters
+# logger.info("mu:\t{}".format(vars['mu']))
+logger.debug("C max:\t{}".format(vars['C'].max()))
+logger.debug("C min:\t{}".format(vars['C'].min()))
+logger.debug("G max:\t{}".format(vars['G'].max()))
+logger.debug("G min:\t{}".format(vars['G'].min()))
+X = np.dot(vars['C'], vars['G'])
+logger.debug("X max:\t{}".format(X.max()))
+logger.debug("X min:\t{}".format(X.min()))
+for i in range(n_steps):
+    if i % 10 == 0:
+        print("step:\t{}".format(i))
+        train.step()
+        train.summarize(i, variables=True)
+
+model.save(log_path)
+logger.debug(model.parameters)
